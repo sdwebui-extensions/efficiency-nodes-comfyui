@@ -154,6 +154,7 @@ def encode_prompts(positive_prompt, negative_prompt, token_normalization, weight
 
 ########################################################################################################################
 # TSC Efficient Loader
+print("TSC Efficient Loader")
 class TSC_EfficientLoader:
 
     @classmethod
@@ -260,6 +261,7 @@ class TSC_EfficientLoader:
 
 #=======================================================================================================================
 # TSC Efficient Loader SDXL
+print("TSC Efficient Loader SDXL")
 class TSC_EfficientLoaderSDXL(TSC_EfficientLoader):
 
     @classmethod
@@ -344,6 +346,7 @@ class TSC_Pack_SDXL_Tuple:
 
 ########################################################################################################################
 # TSC LoRA Stacker
+print("TSC LoRA Stacker")
 class TSC_LoRA_Stacker:
     modes = ["simple", "advanced"]
 
@@ -454,6 +457,7 @@ class TSC_Apply_ControlNet_Stack:
 
 ########################################################################################################################
 # TSC KSampler (Efficient)
+print("TSC KSampler (Efficient)")
 class TSC_KSampler:
     empty_image = pil2tensor(Image.new('RGBA', (1, 1), (0, 0, 0, 0)))
 
@@ -2332,6 +2336,7 @@ try:
     xy_batch_default_path = os.path.abspath(os.sep) + "example_folder"
 except Exception:
     xy_batch_default_path = ""
+print("Common XY Plot Functions/Variables")
 
 def generate_floats(batch_count, first_float, last_float):
     if batch_count > 1:
