@@ -17,8 +17,14 @@ import copy
 import subprocess
 import json
 import psutil
+import time
+tic = time.time()
 
 from comfy_extras.nodes_align_your_steps import AlignYourStepsScheduler
+
+toc = time.time()
+print(f"nodes_align_your_steps {toc - tic}")
+tic = time.time()
 
 # Get the absolute path of various directories
 my_dir = os.path.dirname(os.path.abspath(__file__))
@@ -33,25 +39,73 @@ sys.path.append(comfy_dir)
 from nodes import LatentUpscaleBy, KSampler, KSamplerAdvanced, VAEDecode, VAEDecodeTiled, VAEEncode, VAEEncodeTiled, \
     ImageScaleBy, CLIPSetLastLayer, CLIPTextEncode, ControlNetLoader, ControlNetApply, ControlNetApplyAdvanced, \
     PreviewImage, MAX_RESOLUTION
+toc = time.time()
+print(f"nodes {toc - tic}")
+tic = time.time()
 from comfy_extras.nodes_upscale_model import UpscaleModelLoader, ImageUpscaleWithModel
+toc = time.time()
+print(f"nodes_upscale_model {toc - tic}")
+tic = time.time()
 from comfy_extras.nodes_clip_sdxl import CLIPTextEncodeSDXL, CLIPTextEncodeSDXLRefiner
+toc = time.time()
+print(f"nodes_clip_sdxl {toc - tic}")
+tic = time.time()
 import comfy.sample
+toc = time.time()
+print(f"sample {toc - tic}")
+tic = time.time()
 import comfy.samplers
+toc = time.time()
+print(f"samplers {toc - tic}")
+tic = time.time()
 import comfy.sd
+toc = time.time()
+print(f"sd {toc - tic}")
+tic = time.time()
 import comfy.utils
+toc = time.time()
+print(f"utils {toc - tic}")
+tic = time.time()
 import comfy.latent_formats
+toc = time.time()
+print(f"latent_formats {toc - tic}")
+tic = time.time()
 sys.path.remove(comfy_dir)
 
 # Append my_dir to sys.path & import files
 sys.path.append(my_dir)
 from tsc_utils import *
+toc = time.time()
+print(f"tsc_utils {toc - tic}")
+tic = time.time()
 from .py import smZ_cfg_denoiser
+toc = time.time()
+print(f"smz_cfg_denoiser {toc - tic}")
+tic = time.time()
 from .py import smZ_rng_source
+toc = time.time()
+print(f"smZ_rng_source {toc - tic}")
+tic = time.time()
 from .py import cg_mixed_seed_noise
+toc = time.time()
+print(f"cg_mixed_seed_noise {toc - tic}")
+tic = time.time()
 from .py import city96_latent_upscaler
+toc = time.time()
+print(f"city96_latent_upscaler {toc - tic}")
+tic = time.time()
 from .py import ttl_nn_latent_upscaler
+toc = time.time()
+print(f"ttl_nn_latent_upscaler {toc - tic}")
+tic = time.time()
 from .py import bnk_tiled_samplers
+toc = time.time()
+print(f"bnk_tiled_samplers {toc - tic}")
+tic = time.time()
 from .py import bnk_adv_encode
+toc = time.time()
+print(f"bnk_adv_encode {toc - tic}")
+tic = time.time()
 sys.path.remove(my_dir)
 
 from comfy import samplers
