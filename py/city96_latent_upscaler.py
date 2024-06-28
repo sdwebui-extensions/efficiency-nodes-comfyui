@@ -4,6 +4,7 @@ import torch
 import torch.nn as nn
 from safetensors.torch import load_file
 from huggingface_hub import hf_hub_download
+import os
 
 class Upscaler(nn.Module):
 	"""
@@ -70,10 +71,14 @@ class LatentUpscaler:
 
 	def upscale(self, samples, latent_ver, scale_factor):
 		model = Upscaler(scale_factor)
-		weights = str(hf_hub_download(
-			repo_id="city96/SD-Latent-Upscaler",
-			filename=f"latent-upscaler-v{model.version}_SD{latent_ver}-x{scale_factor}.safetensors")
-		)
+		filename=f"latent-upscaler-v{model.version}_SD{latent_ver}-x{scale_factor}.safetensors"
+		if os.path.exists(f"/stable-diffusion-cache/models/SD-Latent-Upscaler/{filename}"):
+			weights = f"/stable-diffusion-cache/models/SD-Latent-Upscaler/{filename}"
+		else:
+			weights = str(hf_hub_download(
+				repo_id="city96/SD-Latent-Upscaler",
+				filename=f"latent-upscaler-v{model.version}_SD{latent_ver}-x{scale_factor}.safetensors")
+			)
 		# weights = f"./latent-upscaler-v{model.version}_SD{latent_ver}-x{scale_factor}.safetensors"
 
 		model.load_state_dict(load_file(weights))
