@@ -39,73 +39,25 @@ sys.path.append(comfy_dir)
 from nodes import LatentUpscaleBy, KSampler, KSamplerAdvanced, VAEDecode, VAEDecodeTiled, VAEEncode, VAEEncodeTiled, \
     ImageScaleBy, CLIPSetLastLayer, CLIPTextEncode, ControlNetLoader, ControlNetApply, ControlNetApplyAdvanced, \
     PreviewImage, MAX_RESOLUTION
-toc = time.time()
-print(f"nodes {toc - tic}")
-tic = time.time()
 from comfy_extras.nodes_upscale_model import UpscaleModelLoader, ImageUpscaleWithModel
-toc = time.time()
-print(f"nodes_upscale_model {toc - tic}")
-tic = time.time()
 from comfy_extras.nodes_clip_sdxl import CLIPTextEncodeSDXL, CLIPTextEncodeSDXLRefiner
-toc = time.time()
-print(f"nodes_clip_sdxl {toc - tic}")
-tic = time.time()
 import comfy.sample
-toc = time.time()
-print(f"sample {toc - tic}")
-tic = time.time()
 import comfy.samplers
-toc = time.time()
-print(f"samplers {toc - tic}")
-tic = time.time()
 import comfy.sd
-toc = time.time()
-print(f"sd {toc - tic}")
-tic = time.time()
 import comfy.utils
-toc = time.time()
-print(f"utils {toc - tic}")
-tic = time.time()
 import comfy.latent_formats
-toc = time.time()
-print(f"latent_formats {toc - tic}")
-tic = time.time()
 sys.path.remove(comfy_dir)
 
 # Append my_dir to sys.path & import files
 sys.path.append(my_dir)
 from tsc_utils import *
-toc = time.time()
-print(f"tsc_utils {toc - tic}")
-tic = time.time()
 from .py import smZ_cfg_denoiser
-toc = time.time()
-print(f"smz_cfg_denoiser {toc - tic}")
-tic = time.time()
 from .py import smZ_rng_source
-toc = time.time()
-print(f"smZ_rng_source {toc - tic}")
-tic = time.time()
 from .py import cg_mixed_seed_noise
-toc = time.time()
-print(f"cg_mixed_seed_noise {toc - tic}")
-tic = time.time()
 from .py import city96_latent_upscaler
-toc = time.time()
-print(f"city96_latent_upscaler {toc - tic}")
-tic = time.time()
 from .py import ttl_nn_latent_upscaler
-toc = time.time()
-print(f"ttl_nn_latent_upscaler {toc - tic}")
-tic = time.time()
 from .py import bnk_tiled_samplers
-toc = time.time()
-print(f"bnk_tiled_samplers {toc - tic}")
-tic = time.time()
 from .py import bnk_adv_encode
-toc = time.time()
-print(f"bnk_adv_encode {toc - tic}")
-tic = time.time()
 sys.path.remove(my_dir)
 
 from comfy import samplers
@@ -4072,22 +4024,6 @@ class TSC_Noise_Control_Script:
         script["noise"] = (rng_source, cfg_denoiser, add_seed_noise, seed, weight)
         return (script,)
 
-########################################################################################################################
-# Add controlnet options if have controlnet_aux installed (https://github.com/Fannovel16/comfyui_controlnet_aux)
-use_controlnet_widget = preprocessor_widget = (["_"],)
-if os.path.exists(os.path.join(custom_nodes_dir, "comfyui_controlnet_aux")):
-    printout = "Attempting to add Control Net options to the 'HiRes-Fix Script' Node (comfyui_controlnet_aux add-on)..."
-    #print(f"{message('Efficiency Nodes:')} {printout}", end="", flush=True)
-
-    try:
-        with suppress_output():
-            AIO_Preprocessor = getattr(import_module("comfyui_controlnet_aux.__init__"), 'AIO_Preprocessor')
-        use_controlnet_widget = ("BOOLEAN", {"default": False})
-        preprocessor_widget = AIO_Preprocessor.INPUT_TYPES()["optional"]["preprocessor"]
-        print(f"\r{message('Efficiency Nodes:')} {printout}{success('Success!')}")
-    except Exception:
-        print(f"\r{message('Efficiency Nodes:')} {printout}{error('Failed!')}")
-
 # TSC HighRes-Fix with model latent upscalers (https://github.com/city96/SD-Latent-Upscaler)
 class TSC_HighRes_Fix:
 
@@ -4107,6 +4043,21 @@ class TSC_HighRes_Fix:
 
     @classmethod
     def INPUT_TYPES(cls):
+        ########################################################################################################################
+        # Add controlnet options if have controlnet_aux installed (https://github.com/Fannovel16/comfyui_controlnet_aux)
+        use_controlnet_widget = preprocessor_widget = (["_"],)
+        if os.path.exists(os.path.join(custom_nodes_dir, "comfyui_controlnet_aux")):
+            printout = "Attempting to add Control Net options to the 'HiRes-Fix Script' Node (comfyui_controlnet_aux add-on)..."
+            #print(f"{message('Efficiency Nodes:')} {printout}", end="", flush=True)
+
+            try:
+                with suppress_output():
+                    AIO_Preprocessor = getattr(import_module("comfyui_controlnet_aux.__init__"), 'AIO_Preprocessor')
+                use_controlnet_widget = ("BOOLEAN", {"default": False})
+                preprocessor_widget = AIO_Preprocessor.INPUT_TYPES()["optional"]["preprocessor"]
+                print(f"\r{message('Efficiency Nodes:')} {printout}{success('Success!')}")
+            except Exception:
+                print(f"\r{message('Efficiency Nodes:')} {printout}{error('Failed!')}")
 
         return {"required": {"upscale_type": (["latent","pixel","both"],),
                              "hires_ckpt_name": (["(use same)"] + folder_paths.get_filename_list("checkpoints"),),
