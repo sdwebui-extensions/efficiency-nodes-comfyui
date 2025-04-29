@@ -21,6 +21,7 @@ import time
 tic = time.time()
 
 from comfy_extras.nodes_align_your_steps import AlignYourStepsScheduler
+from comfy_extras.nodes_gits import GITSScheduler
 
 toc = time.time()
 print(f"nodes_align_your_steps {toc - tic}")
@@ -68,8 +69,8 @@ sys.path.append(custom_nodes_dir)
 REFINER_CFG_OFFSET = 0 #Refiner CFG Offset
 
 # Monkey patch schedulers
-SCHEDULER_NAMES = samplers.SCHEDULER_NAMES + ["AYS SD1", "AYS SDXL", "AYS SVD"]
-SCHEDULERS = samplers.KSampler.SCHEDULERS + ["AYS SD1", "AYS SDXL", "AYS SVD"]
+SCHEDULER_NAMES = samplers.SCHEDULER_NAMES + ["AYS SD1", "AYS SDXL", "AYS SVD", "GITS"]
+SCHEDULERS = samplers.KSampler.SCHEDULERS + ["AYS SD1", "AYS SDXL", "AYS SVD", "GITS"]
 
 ########################################################################################################################
 # Common function for encoding prompts
@@ -489,6 +490,8 @@ class TSC_KSampler:
             def calculate_sigmas(model_sampling, scheduler_name: str, steps):
                 if scheduler_name.startswith("AYS"):
                     return AlignYourStepsScheduler().get_sigmas(scheduler_name.split(" ")[1], steps, denoise=1.0)[0]
+                elif scheduler_name == "GITS":
+                    return GITSScheduler().get_sigmas(1.20, steps, denoise=1.0)[0]
                 return original_calculation(model_sampling, scheduler_name, steps)
 
             comfy.samplers.KSampler.SCHEDULERS = SCHEDULERS
@@ -886,8 +889,8 @@ class TSC_KSampler:
                             else (os.path.basename(v[0]), v[1]) if v[2] is None
                             else (os.path.basename(v[0]),) + v[1:] for v in value]
 
-                elif type_ == "LoRA" and isinstance(value, list):
-                    # Return only the first Tuple of each inner array
+                elif (type_ == "LoRA" or type_ == "LoRA Stacks") and isinstance(value, list):
+                # Return only the first Tuple of each inner array
                     return [[(os.path.basename(v[0][0]),) + v[0][1:], "..."] if len(v) > 1
                             else [(os.path.basename(v[0][0]),) + v[0][1:]] for v in value]
 
@@ -987,6 +990,7 @@ class TSC_KSampler:
                 "Checkpoint",
                 "Refiner",
                 "LoRA",
+                "LoRA Stacks",
                 "VAE",
             ]
             conditioners = {
@@ -1010,7 +1014,8 @@ class TSC_KSampler:
             # Special cases
             is_special_case = (
                     (X_type == "Refiner On/Off" and Y_type in ["RefineStep", "Steps"]) or
-                    (X_type == "Nothing" and Y_type != "Nothing")
+                    (X_type == "Nothing" and Y_type != "Nothing") or
+                    (Y_type == "LoRA Batch" and (X_type == "LoRA Wt" or X_type == "LoRA MStr" or X_type == "LoRA CStr"))
             )
 
             # Determine whether to flip
@@ -1030,7 +1035,10 @@ class TSC_KSampler:
 
             # Create a list of tuples with types and values
             type_value_pairs = [(X_type, X_value.copy()), (Y_type, Y_value.copy())]
-
+            
+            # Replace "LoRA Stacks" with "LoRA"
+            type_value_pairs = [('LoRA' if t == 'LoRA Stacks' else t, v) for t, v in type_value_pairs]
+            
             # Iterate over type-value pairs
             for t, v in type_value_pairs:
                 if t in dict_map:
@@ -1250,7 +1258,7 @@ class TSC_KSampler:
                     text = f"RefClipSkip ({refiner_clip_skip[0]})"
 
                 elif "LoRA" in var_type:
-                    if not lora_stack:
+                    if not lora_stack or var_type == "LoRA Stacks":
                         lora_stack = var.copy()
                     else:
                         # Updating the first tuple of lora_stack
@@ -1260,7 +1268,7 @@ class TSC_KSampler:
                     lora_name, lora_model_wt, lora_clip_wt = lora_stack[0]
                     lora_filename = os.path.splitext(os.path.basename(lora_name))[0]
 
-                    if var_type == "LoRA":
+                    if var_type == "LoRA" or var_type == "LoRA Stacks":
                         if len(lora_stack) == 1:
                             lora_model_wt = format(float(lora_model_wt), ".2f").rstrip('0').rstrip('.')
                             lora_clip_wt = format(float(lora_clip_wt), ".2f").rstrip('0').rstrip('.')
@@ -1383,7 +1391,7 @@ class TSC_KSampler:
                 # Note: Index is held at 0 when Y_type == "Nothing"
 
                 # Load Checkpoint if required. If Y_type is LoRA, required models will be loaded by load_lora func.
-                if (X_type == "Checkpoint" and index == 0 and Y_type != "LoRA"):
+                if (X_type == "Checkpoint" and index == 0 and Y_type not in ("LoRA", "LoRA Stacks")):
                     if lora_stack is None:
                         model, clip, _ = load_checkpoint(ckpt_name, xyplot_id, cache=cache[1])
                     else: # Load Efficient Loader LoRA
@@ -1392,11 +1400,11 @@ class TSC_KSampler:
                     encode = True
 
                 # Load LoRA if required
-                elif (X_type == "LoRA"):
+                elif (X_type in ("LoRA", "LoRA Stacks")):
                     # Don't cache Checkpoints
                     model, clip = load_lora(lora_stack, ckpt_name, xyplot_id, cache=cache[2])
                     encode = True
-                elif Y_type == "LoRA":  # X_type must be Checkpoint, so cache those as defined
+                elif Y_type in ("LoRA", "LoRA Stacks"):  # X_type must be Checkpoint, so cache those as defined
                     model, clip = load_lora(lora_stack, ckpt_name, xyplot_id,
                                             cache=None, ckpt_cache=cache[1])
                     encode = True
@@ -1613,7 +1621,7 @@ class TSC_KSampler:
                     clear_cache_by_exception(xyplot_id, lora_dict=[], refn_dict=[])
                 elif X_type == "Refiner":
                     clear_cache_by_exception(xyplot_id, ckpt_dict=[], lora_dict=[])
-                elif X_type == "LoRA":
+                elif X_type in ("LoRA", "LoRA Stacks"):
                     clear_cache_by_exception(xyplot_id, ckpt_dict=[], refn_dict=[])
 
             # __________________________________________________________________________________________________________
@@ -1713,7 +1721,12 @@ class TSC_KSampler:
                     lora_name = lora_wt = lora_model_str = lora_clip_str = None
 
                     # Check for all possible LoRA types
-                    lora_types = ["LoRA", "LoRA Batch", "LoRA Wt", "LoRA MStr", "LoRA CStr"]
+                    lora_types = ["LoRA", "LoRA Stacks", "LoRA Batch", "LoRA Wt", "LoRA MStr", "LoRA CStr"]
+
+                    def get_lora_name_for_weights(lora_path, lora_name):
+                        if lora_path:
+                            return os.path.basename(X_value[0][0][0]) if lora_name is None else lora_name
+                        return None
 
                     if X_type not in lora_types and Y_type not in lora_types:
                         if lora_stack:
@@ -1726,7 +1739,7 @@ class TSC_KSampler:
                     else:
                         if X_type in lora_types:
                             value = get_lora_sublist_name(X_type, X_value)
-                            if  X_type == "LoRA":
+                            if  X_type in ("LoRA", "LoRA Stacks"):
                                 lora_name = value
                                 lora_model_str = None
                                 lora_clip_str = None
@@ -1735,20 +1748,20 @@ class TSC_KSampler:
                                 lora_model_str = X_value[0][0][1] if lora_model_str is None else lora_model_str
                                 lora_clip_str = X_value[0][0][2] if lora_clip_str is None else lora_clip_str
                             elif X_type == "LoRA MStr":
-                                lora_name = os.path.basename(X_value[0][0][0]) if lora_name is None else lora_name
+                                lora_name = get_lora_name_for_weights(X_value[0][0][0], lora_name)
                                 lora_model_str = value
                                 lora_clip_str = X_value[0][0][2] if lora_clip_str is None else lora_clip_str
                             elif X_type == "LoRA CStr":
-                                lora_name = os.path.basename(X_value[0][0][0]) if lora_name is None else lora_name
+                                lora_name = get_lora_name_for_weights(X_value[0][0][0], lora_name)
                                 lora_model_str = X_value[0][0][1] if lora_model_str is None else lora_model_str
                                 lora_clip_str = value
                             elif X_type == "LoRA Wt":
-                                lora_name = os.path.basename(X_value[0][0][0]) if lora_name is None else lora_name
+                                lora_name = get_lora_name_for_weights(X_value[0][0][0], lora_name)
                                 lora_wt = value
 
                         if Y_type in lora_types:
                             value = get_lora_sublist_name(Y_type, Y_value)
-                            if  Y_type == "LoRA":
+                            if  Y_type in ("LoRA", "LoRA Stacks"):
                                 lora_name = value
                                 lora_model_str = None
                                 lora_clip_str = None
@@ -1757,27 +1770,27 @@ class TSC_KSampler:
                                 lora_model_str = Y_value[0][0][1] if lora_model_str is None else lora_model_str
                                 lora_clip_str = Y_value[0][0][2] if lora_clip_str is None else lora_clip_str
                             elif Y_type == "LoRA MStr":
-                                lora_name = os.path.basename(Y_value[0][0][0]) if lora_name is None else lora_name
+                                lora_name = get_lora_name_for_weights(Y_value[0][0][0], lora_name)
                                 lora_model_str = value
                                 lora_clip_str = Y_value[0][0][2] if lora_clip_str is None else lora_clip_str
                             elif Y_type == "LoRA CStr":
-                                lora_name = os.path.basename(Y_value[0][0][0]) if lora_name is None else lora_name
+                                lora_name = get_lora_name_for_weights(Y_value[0][0][0], lora_name)
                                 lora_model_str = Y_value[0][0][1] if lora_model_str is None else lora_model_str
                                 lora_clip_str = value
                             elif Y_type == "LoRA Wt":
-                                lora_name = os.path.basename(Y_value[0][0][0]) if lora_name is None else lora_name
+                                lora_name = get_lora_name_for_weights(Y_value[0][0][0], lora_name)
                                 lora_wt = value
 
                     return lora_name, lora_wt, lora_model_str, lora_clip_str
 
                 def get_lora_sublist_name(lora_type, lora_value):
-                    if lora_type == "LoRA" or lora_type == "LoRA Batch":
+                    if lora_type in ("LoRA", "LoRA Batch", "LoRA Stacks"):
                         formatted_sublists = []
                         for sublist in lora_value:
                             formatted_entries = []
                             for x in sublist:
                                 base_name = os.path.splitext(os.path.basename(str(x[0])))[0]
-                                formatted_str = f"{base_name}({round(x[1], 3)},{round(x[2], 3)})" if lora_type == "LoRA" else f"{base_name}"
+                                formatted_str = f"{base_name}({round(x[1], 3)},{round(x[2], 3)})" if lora_type in ("LoRA", "LoRA Stacks") else f"{base_name}"
                                 formatted_entries.append(formatted_str)
                             formatted_sublists.append(f"{', '.join(formatted_entries)}")
                         return "\n      ".join(formatted_sublists)
@@ -2382,7 +2395,7 @@ class TSC_XYplot:
         # Check that dependencies are connected for specific plot types
         encode_types = {
             "Checkpoint", "Refiner",
-            "LoRA", "LoRA Batch", "LoRA Wt", "LoRA MStr", "LoRA CStr",
+            "LoRA", "LoRA Stacks", "LoRA Batch", "LoRA Wt", "LoRA MStr", "LoRA CStr",
             "Positive Prompt S/R", "Negative Prompt S/R",
             "AScore+", "AScore-",
             "Clip Skip", "Clip Skip (Refiner)",
@@ -2398,8 +2411,13 @@ class TSC_XYplot:
         # Check if both X_type and Y_type are special lora_types
         lora_types = {"LoRA Batch", "LoRA Wt", "LoRA MStr", "LoRA CStr"}
         if (X_type in lora_types and Y_type not in lora_types) or (Y_type in lora_types and X_type not in lora_types):
-            print(
-                f"{error('XY Plot Error:')} Both X and Y must be connected to use the 'LoRA Plot' node.")
+            print(f"{error('XY Plot Error:')} Both X and Y must be connected to use the 'LoRA Plot' node.")
+            return (None,)
+
+        # Do not allow LoRA and LoRA Stacks
+        lora_types = {"LoRA", "LoRA Stacks"}
+        if (X_type in lora_types and Y_type in lora_types):
+            print(f"{error('XY Plot Error:')} X and Y input types must be different.")
             return (None,)
 
         # Clean Schedulers from Sampler data (if other type is Scheduler)
@@ -2923,7 +2941,7 @@ class TSC_XYplot_LoRA_Batch:
         if batch_max == 0:
             return (None,)
 
-        xy_type = "LoRA"
+        xy_type = "LoRA Stacks"
 
         loras = get_batch_files(batch_path, LORA_EXTENSIONS, include_subdirs=subdirectories)
 
@@ -3042,8 +3060,8 @@ class TSC_XYplot_LoRA_Plot:
                 "X_first_value": ("FLOAT", {"default": 0.0, "min": 0.00, "max": 10.0, "step": 0.01}),
                 "X_last_value": ("FLOAT", {"default": 1.0, "min": 0.00, "max": 10.0, "step": 0.01}),
                 "Y_batch_count": ("INT", {"default": XYPLOT_DEF, "min": 0, "max": XYPLOT_LIM}),
-                "Y_first_value": ("FLOAT", {"default": 0.0, "min": 0.00, "max": 10.0, "step": 0.01}),
-                "Y_last_value": ("FLOAT", {"default": 1.0, "min": 0.00, "max": 10.0, "step": 0.01}),},
+                "Y_first_value": ("FLOAT", {"default": 0.0, "min": -10.00, "max": 10.0, "step": 0.01}),
+                "Y_last_value": ("FLOAT", {"default": 1.0, "min": -10.00, "max": 10.0, "step": 0.01}),},
             "optional": {"lora_stack": ("LORA_STACK",)}
         }
 
@@ -3146,7 +3164,7 @@ class TSC_XYplot_LoRA_Stacks:
     CATEGORY = "Efficiency Nodes/XY Inputs"
 
     def xy_value(self, node_state, lora_stack_1=None, lora_stack_2=None, lora_stack_3=None, lora_stack_4=None, lora_stack_5=None):
-        xy_type = "LoRA"
+        xy_type = "LoRA Stacks"
         xy_value = [stack for stack in [lora_stack_1, lora_stack_2, lora_stack_3, lora_stack_4, lora_stack_5] if stack is not None]
         if not xy_value or not any(xy_value) or node_state == "Disabled":
             return (None,)
@@ -3903,13 +3921,13 @@ class TSC_ImageOverlay:
                 "overlay_image": ("IMAGE",),
                 "overlay_resize": (["None", "Fit", "Resize by rescale_factor", "Resize to width & heigth"],),
                 "resize_method": (["nearest-exact", "bilinear", "area"],),
-                "rescale_factor": ("FLOAT", {"default": 1, "min": 0.01, "max": 16.0, "step": 0.1}),
-                "width": ("INT", {"default": 512, "min": 0, "max": MAX_RESOLUTION, "step": 64}),
-                "height": ("INT", {"default": 512, "min": 0, "max": MAX_RESOLUTION, "step": 64}),
-                "x_offset": ("INT", {"default": 0, "min": -48000, "max": 48000, "step": 10}),
-                "y_offset": ("INT", {"default": 0, "min": -48000, "max": 48000, "step": 10}),
-                "rotation": ("INT", {"default": 0, "min": -180, "max": 180, "step": 5}),
-                "opacity": ("FLOAT", {"default": 0, "min": 0, "max": 100, "step": 5}),
+                "rescale_factor": ("FLOAT", {"default": 1, "min": 0.01, "max": 16.0, "step": 0.01}),
+                "width": ("INT", {"default": 512, "min": 0, "max": MAX_RESOLUTION, "step": 1}),
+                "height": ("INT", {"default": 512, "min": 0, "max": MAX_RESOLUTION, "step": 1}),
+                "x_offset": ("INT", {"default": 0, "min": -48000, "max": 48000, "step": 1}),
+                "y_offset": ("INT", {"default": 0, "min": -48000, "max": 48000, "step": 1}),
+                "rotation": ("INT", {"default": 0, "min": -180, "max": 180, "step": 0.1}),
+                "opacity": ("FLOAT", {"default": 0, "min": 0, "max": 100, "step": 0.1}),
             },
             "optional": {"optional_mask": ("MASK",),}
         }
@@ -3959,8 +3977,8 @@ class TSC_ImageOverlay:
             # Apply mask as overlay's alpha
             overlay_image.putalpha(ImageOps.invert(mask))
 
-        # Rotate the overlay image
-        overlay_image = overlay_image.rotate(rotation, expand=True)
+        # Rotate the overlay image with antialiasing
+        overlay_image = overlay_image.rotate(rotation, resample=Image.BICUBIC, expand=True)
 
         # Apply opacity on overlay image
         r, g, b, a = overlay_image.split()
@@ -3976,14 +3994,20 @@ class TSC_ImageOverlay:
             # Convert tensor to PIL Image
             image = tensor2pil(tensor)
 
-            # Paste the overlay image onto the base image
-            if mask is None:
-                image.paste(overlay_image, location)
-            else:
-                image.paste(overlay_image, location, overlay_image)
+            # Create a new blank image with an alpha channel
+            combined = Image.new('RGBA', image.size, (0, 0, 0, 0))
+
+            # Paste the base image onto the new image
+            combined.paste(image, (0, 0))
+
+            # Paste the overlay image onto the combined image using alpha compositing
+            combined.alpha_composite(overlay_image, location)
+
+            # Convert the combined image back to RGB mode
+            result = combined.convert('RGB')
 
             # Convert PIL Image back to tensor
-            processed_tensor = pil2tensor(image)
+            processed_tensor = pil2tensor(result)
 
             # Append to list
             processed_base_image_list.append(processed_tensor)
