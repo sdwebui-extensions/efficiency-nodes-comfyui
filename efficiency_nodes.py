@@ -162,11 +162,17 @@ class TSC_EfficientLoader:
             if lora_stack:
                 lora_params.extend(lora_stack)
 
-            # Load LoRa(s)
-            model, clip = load_lora(lora_params, ckpt_name, my_unique_id, cache=lora_cache, ckpt_cache=ckpt_cache, cache_overwrite=True)
+            # Load LoRA(s)
+            model, clip = load_lora(lora_params, ckpt_name, my_unique_id, cache=lora_cache, ckpt_cache=ckpt_cache,
+                                    cache_overwrite=True)
 
             if vae_name == "Baked VAE":
                 vae = get_bvae_by_ckpt_name(ckpt_name)
+                if vae is None:
+                    print(
+                        f"{warning('Efficiency Nodes:')} Baked VAE not found in cache, loading checkpoint to extract VAE...")
+                    _, _, vae = load_checkpoint(ckpt_name, my_unique_id, output_vae=True, cache=ckpt_cache,
+                                                cache_overwrite=True)
         else:
             model, clip, vae = load_checkpoint(ckpt_name, my_unique_id, cache=ckpt_cache, cache_overwrite=True)
             lora_params = None
@@ -309,11 +315,11 @@ class TSC_LoRA_Stacker:
         inputs = {
             "required": {
                 "input_mode": (cls.modes,),
-                "lora_count": ("INT", {"default": 3, "min": 0, "max": 50, "step": 1}),
+                "lora_count": ("INT", {"default": 3, "min": 0, "max": 3, "step": 1}),
             }
         }
 
-        for i in range(1, 50):
+        for i in range(1, 4):
             inputs["required"][f"lora_name_{i}"] = (loras,)
             inputs["required"][f"lora_wt_{i}"] = ("FLOAT", {"default": 1.0, "min": -10.0, "max": 10.0, "step": 0.01})
             inputs["required"][f"model_str_{i}"] = ("FLOAT", {"default": 1.0, "min": -10.0, "max": 10.0, "step": 0.01})
@@ -3057,8 +3063,8 @@ class TSC_XYplot_LoRA_Plot:
                 "X_batch_path": ("STRING", {"default": xy_batch_default_path, "multiline": False}),
                 "X_subdirectories": ("BOOLEAN", {"default": False}),
                 "X_batch_sort": (["ascending", "descending"],),
-                "X_first_value": ("FLOAT", {"default": 0.0, "min": 0.00, "max": 10.0, "step": 0.01}),
-                "X_last_value": ("FLOAT", {"default": 1.0, "min": 0.00, "max": 10.0, "step": 0.01}),
+                "X_first_value": ("FLOAT", {"default": 0.0, "min": -10.00, "max": 10.0, "step": 0.01}),
+                "X_last_value": ("FLOAT", {"default": 1.0, "min": -10.00, "max": 10.0, "step": 0.01}),
                 "Y_batch_count": ("INT", {"default": XYPLOT_DEF, "min": 0, "max": XYPLOT_LIM}),
                 "Y_first_value": ("FLOAT", {"default": 0.0, "min": -10.00, "max": 10.0, "step": 0.01}),
                 "Y_last_value": ("FLOAT", {"default": 1.0, "min": -10.00, "max": 10.0, "step": 0.01}),},
